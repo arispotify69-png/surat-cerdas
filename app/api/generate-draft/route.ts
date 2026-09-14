@@ -21,8 +21,12 @@ export async function POST(req: Request) {
       templates?.map((t) => `Contoh "${t.nama}": ${JSON.stringify(t.konten)}`).join('\n') ?? ''
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
+    const ev = process.env.GEMINI_MODEL || ''
+    const model = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'].includes(ev)
+      ? ev
+      : 'gemini-1.5-flash'
     const response = await ai.models.generateContent({
-      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+      model,
       contents: [
         'Anda asisten penulis surat resmi sekolah berbahasa Indonesia baku dan sopan. ' +
           'Keluarkan HANYA HTML rapi (tag <p>, <br>, <strong>) tanpa markdown backticks, siap render di WYSIWYG editor.' +
@@ -34,8 +38,11 @@ export async function POST(req: Request) {
     const draft = (response.text || '').replace(/^```html\n?|```$/g, '').trim()
     if (!draft) return NextResponse.json({ error: 'AI tidak menghasilkan draf' }, { status: 502 })
     return NextResponse.json({ draft })
-  } catch (e) {
+  } catch (e: unknown) {
     console.error('generate-draft:', e)
-    return NextResponse.json({ error: 'Gagal membuat draf surat' }, { status: 500 })
+    const msg = e instanceof Error ? e.message : String(e)
+    // jangan bocorkan seluruh stack ke client, cukup snippet diagnosis
+    const hint = msg.slice(0, 400)
+    return NextResponse.json({ error: 'Gagal membuat draf surat', details: hint }, { status: 500 })
   }
 }
