@@ -22,9 +22,8 @@ export async function POST(req: Request) {
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
     const ev = process.env.GEMINI_MODEL || ''
-    const model = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'].includes(ev)
-      ? ev
-      : 'gemini-1.5-flash'
+    const supported = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
+    const model = supported.includes(ev) ? ev : 'gemini-2.0-flash'
     const response = await ai.models.generateContent({
       model,
       contents: [
