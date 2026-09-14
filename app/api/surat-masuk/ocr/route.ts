@@ -43,7 +43,7 @@ Kembalikan HANYA format JSON valid tanpa tanda backtick markdown, dengan struktu
 Jika salah satu nilai tidak ditemukan dengan jelas di dokumen, berikan estimasi yang masuk akal atau nilai default.`
 
     const response = await ai.models.generateContent({
-      model: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
+      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
       contents: [
         {
           inlineData: {

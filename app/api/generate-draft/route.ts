@@ -22,7 +22,7 @@ export async function POST(req: Request) {
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
     const response = await ai.models.generateContent({
-      model: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
+      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
       contents: [
         'Anda asisten penulis surat resmi sekolah berbahasa Indonesia baku dan sopan. ' +
           'Keluarkan HANYA HTML rapi (tag <p>, <br>, <strong>) tanpa markdown backticks, siap render di WYSIWYG editor.' +
