@@ -69,9 +69,7 @@ export default function BaruPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'pending_approval' }),
       })
-      // opsional: trigger email jika ada alamat kepsek di env/konfigurasi
-      const kp = process.env.NEXT_PUBLIC_KEPSEK_EMAIL // boleh kosong untuk MVP
-      if (kp) await fetch('/api/send-review-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ surat_id: j.id, email: kp }) })
+      // notifikasi email dihapus atas permintaan user (YAGNI) — kepsek lihat antrian di /dashboard/kepala-sekolah
     }
     setMsg(kind === 'pending' ? 'Surat dikirim ke persetujuan.' : 'Draf tersimpan.')
     setBusy(false)
