@@ -1,26 +1,27 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { Eraser, Save, CheckCircle2, Loader2, PenLine } from 'lucide-react'
 
 interface Props {
   suratId: string
   ttdStoredPath?: string | null
 }
 
-// ponytail: minimal canvas-only untuk MVP; tambah opsi upload PNG ketika diperlukan
 export default function TtdCanvas({ suratId, ttdStoredPath }: Props) {
   const ref = useRef<HTMLCanvasElement>(null)
-  const [drawing, setDrawing] = useState(false)
+  const drawing = useRef(false)
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState('')
   const [ttdPath, setTtdPath] = useState<string | null>(ttdStoredPath ?? null)
+  const [empty, setEmpty] = useState(true)
 
   const pos = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
     const r = canvas.getBoundingClientRect()
     const t = 'touches' in e && e.touches.length ? e.touches[0] : null
-    const x = t ? t.clientX - r.left : (e as React.MouseEvent).clientX - r.left
-    const y = t ? t.clientY - r.top : (e as React.MouseEvent).clientY - r.top
-    return { x: (x / r.width) * canvas.width, y: (y / r.height) * canvas.height }
+    const cx = t ? t.clientX : (e as React.MouseEvent).clientX
+    const cy = t ? t.clientY : (e as React.MouseEvent).clientY
+    return { x: ((cx - r.left) / r.width) * canvas.width, y: ((cy - r.top) / r.height) * canvas.height }
   }
 
   const start = (e: React.MouseEvent | React.TouchEvent) => {
@@ -28,88 +29,102 @@ export default function TtdCanvas({ suratId, ttdStoredPath }: Props) {
     const c = ref.current!
     const ctx = c.getContext('2d')!
     const { x, y } = pos(e, c)
-    ctx.strokeStyle = '#111'
-    ctx.lineWidth = 2
+    ctx.strokeStyle = '#111827'
+    ctx.lineWidth = 2.5
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     ctx.beginPath()
     ctx.moveTo(x, y)
-    setDrawing(true)
+    drawing.current = true
+    setEmpty(false)
   }
+
   const move = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!drawing) return
+    if (!drawing.current) return
     e.preventDefault()
     const c = ref.current!
+    const ctx = c.getContext('2d')!
     const { x, y } = pos(e, c)
-    c.getContext('2d')!.lineTo(x, y)
-    c.getContext('2d')!.stroke()
+    ctx.lineTo(x, y)
+    ctx.stroke()
   }
-  const stop = () => setDrawing(false)
+
+  const stop = () => {
+    drawing.current = false
+  }
+
   const clear = () => {
     const c = ref.current!
     c.getContext('2d')!.clearRect(0, 0, c.width, c.height)
+    setEmpty(true)
+    setTtdPath(null)
   }
+
   const save = async () => {
-    const c = ref.current!
-    const url = c.toDataURL('image/png')
-    // cek kosong (hampir transparan seluruhnya) — sederhana: ukuran data URL
-    if (url.length < 3000) {
-      setMsg('Tanda tangan kosong, silakan gambar dahulu.')
+    if (empty) {
+      toast.error('Tanda tangan masih kosong', { description: 'Gambar tanda tangan terlebih dahulu.' })
       return
     }
     setBusy(true)
-    setMsg('')
-    const up = await fetch('/api/upload-ttd', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dataUrl: url }),
-    })
-    const uj = await up.json()
-    if (!up.ok) {
-      setMsg(uj.error ?? 'Gagal menyimpan TTD')
+    try {
+      const url = ref.current!.toDataURL('image/png')
+      const up = await fetch('/api/upload-ttd', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataUrl: url }),
+      })
+      const uj = await up.json()
+      if (!up.ok) throw new Error(uj.error ?? 'Gagal menyimpan TTD')
+      setTtdPath(uj.path)
+      await fetch(`/api/surat/${suratId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ttd_path: uj.path, ttd_type: 'canvas' }),
+      })
+      toast.success('Tanda tangan tersimpan')
+    } catch (e: unknown) {
+      toast.error('Gagal menyimpan', { description: e instanceof Error ? e.message : undefined })
+    } finally {
       setBusy(false)
-      return
     }
-    setTtdPath(uj.path)
-    await fetch(`/api/surat/${suratId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ttd_path: uj.path, ttd_type: 'canvas' }),
-    })
-    setMsg('TTD tersimpan.')
-    setBusy(false)
   }
-  const renderPdf = async () => {
+
+  const approve = async () => {
     if (!ttdPath) {
-      setMsg('Simpan TTD terlebih dahulu.')
+      toast.error('Simpan tanda tangan terlebih dahulu')
       return
     }
     setBusy(true)
-    setMsg('')
-    const res = await fetch(`/api/generate-pdf/${suratId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ttd_path: ttdPath }),
-    })
-    const j = await res.json()
-    setBusy(false)
-    if (!res.ok) {
-      setMsg(j.error ?? 'Gagal merender PDF')
-      return
+    try {
+      const res = await fetch(`/api/generate-pdf/${suratId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ttd_path: ttdPath }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error ?? 'Gagal merender PDF')
+      toast.success('Surat disetujui & PDF dibuat')
+      setTimeout(() => window.location.reload(), 800)
+    } catch (e: unknown) {
+      toast.error('Gagal menyetujui', { description: e instanceof Error ? e.message : undefined })
+      setBusy(false)
     }
-    setMsg(`PDF jadi: ${j.pdf_path}. Halaman akan dimuat ulang...`)
-    setTimeout(() => window.location.reload(), 900)
   }
 
   return (
-    <section className="rounded-lg border p-4">
-      <h2 className="text-sm font-semibold">Tanda Tangan Digital</h2>
-      {ttdPath && <p className="mt-1 text-xs text-zinc-500">TTD tersimpan: {ttdPath}</p>}
+    <section className="ui-card">
+      <div className="flex items-center gap-2">
+        <PenLine className="h-4 w-4 text-indigo-600" />
+        <h2 className="text-sm font-semibold">Tanda Tangan Digital</h2>
+        {ttdPath && <span className="ui-badge bg-emerald-100 text-emerald-800">tersimpan</span>}
+      </div>
+
       <canvas
         ref={ref}
         width={700}
         height={220}
-        className="mt-3 w-full touch-none rounded-md border bg-white"
+        aria-label="Area tanda tangan"
+        className="mt-3 h-auto w-full touch-none rounded-xl border-2 border-dashed border-zinc-300 bg-white dark:border-zinc-700"
         onMouseDown={start}
         onMouseMove={move}
         onMouseUp={stop}
@@ -118,26 +133,19 @@ export default function TtdCanvas({ suratId, ttdStoredPath }: Props) {
         onTouchMove={move}
         onTouchEnd={stop}
       />
-      {msg && <p className="mt-2 text-sm text-zinc-600">{msg}</p>}
+      {empty && !ttdPath && (
+        <p className="mt-2 text-center text-xs text-zinc-400">Gambar tanda tangan di area di atas</p>
+      )}
+
       <div className="mt-3 flex flex-wrap gap-2">
-        <button onClick={clear} type="button" className="min-h-[44px] rounded-md border px-4 text-sm">
-          Hapus
+        <button onClick={clear} type="button" className="ui-btn-ghost">
+          <Eraser className="h-4 w-4" /> Hapus
         </button>
-        <button
-          onClick={save}
-          type="button"
-          disabled={busy}
-          className="min-h-[44px] rounded-md bg-zinc-900 px-4 text-sm text-white disabled:opacity-50"
-        >
-          Simpan TTD
+        <button onClick={save} type="button" disabled={busy} className="ui-btn-ghost">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Simpan TTD
         </button>
-        <button
-          onClick={renderPdf}
-          type="button"
-          disabled={busy || !ttdPath}
-          className="min-h-[44px] rounded-md border border-emerald-600 bg-emerald-600 px-4 text-sm text-white disabled:opacity-50"
-        >
-          Approve & Render PDF
+        <button onClick={approve} type="button" disabled={busy || !ttdPath} className="ui-btn-primary sm:ml-auto">
+          <CheckCircle2 className="h-4 w-4" /> Approve &amp; Render PDF
         </button>
       </div>
     </section>
